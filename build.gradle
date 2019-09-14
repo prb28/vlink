@@ -1,0 +1,39 @@
+apply plugin: "c"
+
+model {
+    platforms {
+        x86 {
+            architecture "x86"
+        }
+        x86_64 {
+            architecture "x86_64"
+        }
+    }
+    components {
+        vlink(NativeExecutableSpec) {
+            targetPlatform "x86"
+            targetPlatform "x86_64"
+            sources {
+                c {
+                    source {
+                        srcDirs "."
+                        include "*.c"
+                    }
+                    exportedHeaders {
+                        srcDirs "."
+                        include "*.h"
+                    }
+                }
+            }
+            binaries.all {
+                if ((toolChain in Gcc) || (toolChain in Clang)) {
+                    cCompiler.args "-std=c9x", "-O2", "-fomit-frame-pointer", "-c"
+                } else if (toolChain in VisualCpp) {
+                    cCompiler.args "/nologo", "/O2", "/MD", "/c", "/wd4996" 
+                    linker.args "/NOLOGO"
+                }
+            }
+        }
+    }
+}
+
