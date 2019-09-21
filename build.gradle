@@ -30,7 +30,7 @@ model {
                     cCompiler.args "-std=c9x", "-O2", "-fomit-frame-pointer", "-c"
                 } else if (toolChain in VisualCpp) {
                     cCompiler.args "/nologo", "/O2", "/MD", "/c", "/wd4996" 
-                    linker.args "/NOLOGO"
+                    linker.args "/NOLOGO", 'kernel32.lib', 'user32.lib'
                 }
             }
         }
