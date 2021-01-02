@@ -1,8 +1,8 @@
-/* $VER: vlink vlink.h V0.16c (10.03.19)
+/* $VER: vlink vlink.h V0.16g (29.12.20)
  *
  * This file is part of vlink, a portable linker for multiple
  * object formats.
- * Copyright (c) 1997-2019  Frank Wille
+ * Copyright (c) 1997-2020  Frank Wille
  */
 
 #include <stdlib.h>
@@ -101,13 +101,20 @@ struct LibPath {                /* libpaths list. */
 struct Flavours {               /* library flavours */
   int n_flavours;
   int flavours_len;
-  char **flavours;
+  const char **flavours;
   char *flavour_dir;
+};
+
+struct SecRename {              /* renamed input sections */
+  struct SecRename *next;
+  const char *orgname;
+  const char *newname;
 };
 
 struct InputFile {              /* inputlist nodes */
   struct node n;                /* contains names & flags of all inp. files */
   const char *name;
+  struct SecRename *renames;
   bool lib;                     /* search library */
   bool dynamic;                 /* try to link dynamic first */
   int so_ver;                   /* minimum version of shared object */
@@ -125,6 +132,7 @@ struct LinkFile {
   const char *objname;          /* current obj. name: sin.o (archives only)*/
   uint8_t *data;                /* pointer to file data */
   unsigned long length;         /* length of file */
+  struct SecRename *renames;    /* current input section renames */
   uint8_t format;               /* file format - index into targets table */
   uint8_t type;                 /* ID_OBJECT/SHAREDOBJ/LIBARCH */
   uint16_t flags;               /* flags from InputFile */
@@ -213,7 +221,7 @@ struct Section {
 #define ST_DATA 2               /* section contains initialized data */
 #define ST_UDATA 3              /* section contains uninitialized data */
 #define ST_TMP 4                /* a temporary, linker-generated section */
-#define ST_LAST 4               /* last section type */
+#define ST_LAST 3               /* last real section type */
 
 /* section flags */
 #define SF_ALLOC           0x01 /* allocate section in memory */
@@ -232,6 +240,14 @@ struct Section {
 #define SP_SHARE 8
 
 
+struct SymbolMask {
+  struct SymbolMask *next;
+  const char *name;
+  uint32_t common_mask;         /* common/ORed feature-mask of all references */
+};
+
+#define SMASKHTABSIZE 0x1000
+
 struct RelocInsert {            /* describes how to insert a reloc addend */
   struct RelocInsert *next;
   uint16_t bpos;                /* bit-position counted from leftmost bit */
@@ -247,6 +263,7 @@ struct Reloc {                  /* relocation information */
     struct Section *ptr;        /* base addr of this sect. has to be added */
     struct LinkedSection *lnk;  /* base addr of joined sections */
     struct Symbol *symbol;      /* symbol-pointer, if x-ref. was resolved */
+    struct SymbolMask *smask;	/* ORed feat.mask of all xrefs with this name */
   } relocsect;
   unsigned long offset;         /* section-offset of relocation */
   lword addend;                 /* add this to relocation value */
@@ -287,6 +304,7 @@ struct Reloc {                  /* relocation information */
 
 /* Reloc flags */
 #define RELF_WEAK 1             /* reference is weak and defaults to 0 */
+#define RELF_MASKED 2           /* reference uses a SymbolMask */
 #define RELF_INTERNAL 0x10      /* linker-internal relocation, not exported */
 #define RELF_PLT 0x40           /* dynamic PLT relocation */
 #define RELF_DYN 0x80           /* other dynamic relocation */
@@ -308,6 +326,7 @@ struct Symbol {
   uint8_t info;                 /* section, function or object */
   uint8_t bind;                 /* local, global or weak binding */
   uint32_t size;                /* symbol's size in bytes */
+  uint32_t fmask;               /* gv->masked_symbols: feature bit-mask or 0 */
   uint32_t extra;               /* extra data, used by some targets */
 };
 
@@ -348,6 +367,7 @@ struct Symbol {
 struct SymNames {
   struct SymNames *next;        /* next symbol name in hash chain */
   const char *name;             /* symbol's name */
+  lword value;                  /* optional value */
 };
 
 
@@ -416,8 +436,9 @@ struct LinkedSection {          /* linked sections of same type and name */
 };
 
 /* linking flags (ld_flags) */
-#define LSF_NOLOAD         0x01 /* used on empty LinkedSection (ldscript) */
-#define LSF_PRESERVE       0x02 /* don't delete when unused/empty */
+#define LSF_USED           0x01 /* section used in linker script */
+#define LSF_NOLOAD         0x02 /* used on empty LinkedSection (ldscript) */
+#define LSF_PRESERVE       0x04 /* don't delete when unused/empty */
 
 
 struct Phdr {
@@ -483,18 +504,26 @@ struct GlobalVars {
   bool textbasedsyms;           /* symbol offsets based on text section */
   bool output_sections;         /* output each section as a new file */
   uint8_t min_alignment;        /* minimal section alignment (default 0) */
+  uint8_t ptr_alignment;        /* minimum alignment for pointers */
   bool auto_merge;              /* merge sections with pc-rel. references */
   bool merge_same_type;         /* merge all sections of same type */
+  bool merge_all;               /* merge everything into a single section */
   uint8_t gc_sects;             /* garbage-collect unreferenced sections */
   bool keep_trailing_zeros;     /* keep trailing zero-bytes at end of sect. */
   bool keep_sect_order;         /* keep order of section as found in objs */
-  uint8_t reserved;
+  uint8_t bits_per_taddr;       /* bits in target address (taddr, lword) */
+  char masked_symbols;          /* symbols may use a feature-mask */
+  bool os9noshare;              /* OS9 non-shareable module */
+  char reserved[2];
   FILE *map_file;               /* map file */
   FILE *trace_file;             /* linker trace output */
+  FILE *vice_file;              /* label-file for the VICE emulator */
   struct SymNames **trace_syms; /* trace-symbol hash table */
   struct SymNames *prot_syms;   /* list of protected symbols */
   struct SymNames *undef_syms;  /* list of undefined symbols */
+  struct SymNames *lnk_syms;    /* list of command line linker symbols */
   struct SecAttrOvr *secattrovrs; /* input section attribute overwrites */
+  struct SecRename *secrenames; /* input section renaming */
   const char *scriptname;
   const char *ldscript;         /* linker-script to be used for output file */
   const char *entry_name;       /* entry point symbol or addr (-e option) */
@@ -503,6 +532,8 @@ struct GlobalVars {
   const char *interp_path;      /* path to program interpreter (ELF) */
   struct list rpaths;           /* library paths for dynamic linker (ELF) */
   uint32_t tosflags;            /* flags field in TOS header */
+  int os9mem,os9rev;            /* OS9 module header settings */
+  const char *os9name;          /* OS9 module name */
 
   /* errors */
   bool dontwarn;                /* suppress warnings */
@@ -518,6 +549,7 @@ struct GlobalVars {
   struct list sharedobjects;    /* list of shared objects */
   struct Symbol **symbols;      /* global symbol hash table */
   struct Symbol **lnksyms;      /* target-specific linker symbols hash tab */
+  struct SymbolMask **symmasks; /* hash table of ORed symbol masks */
   struct list scriptsymbols;    /* symbols defined by linker script */
   struct list pripointers;      /* list of PriPointer nodes */
   struct list lnksec;           /* list of linked sections */
@@ -539,6 +571,7 @@ struct GlobalVars {
   unsigned long scommon_sec_hash;
   const char *got_base_name;    /* GOT label: _GLOBAL_OFFSET_TABLE_ */
   const char *plt_base_name;    /* PLT label: _PROCEDURE_LINKAGE_TABLE_ */
+  bool pcrel_ctors;             /* write pc-relative con-/destructors */
   bool dynamic;                 /* dynamic linking - requires interpreter */
   bool use_ldscript;            /* true means there are LinkedSections, */
                                 /*  generated by a linker-script */
@@ -590,7 +623,7 @@ struct FFFuncs {                /* file format specific functions and data */
   const char *exeldscript;      /* default linker-script for executables */
   const char *soldscript;       /* default linker-script for shared objects */
   void                          /* optional init function for the target */
-    (*init)(struct GlobalVars *);
+    (*init)(struct GlobalVars *,int);
   unsigned long                 /* size of header before first section */
     (*headersize)(struct GlobalVars *);
   int                           /* format identification */
@@ -602,7 +635,7 @@ struct FFFuncs {                /* file format specific functions and data */
   int                           /* chk. if target requires linking of sect.*/
     (*targetlink)(struct GlobalVars *,struct LinkedSection *,struct Section *);
   struct Symbol *               /* optional target-specific find-symbol */
-    (*fndsymbol)(struct GlobalVars *,struct Section *,const char *name);
+    (*fndsymbol)(struct GlobalVars *,struct Section *,const char *name,uint32_t);
   struct Symbol *               /* resolve linker-symbol reference */
     (*lnksymbol)(struct GlobalVars *,struct Section *,struct Reloc *);
   void                          /* init sym structure during resolve_xref() */
@@ -629,9 +662,14 @@ struct FFFuncs {                /* file format specific functions and data */
   uint8_t rtab_mask;            /* mask of allowed reloc-table formats */
   int8_t endianess;             /* 1=bigEndian, 0=littleEndian */
   int8_t addr_bits;             /* bits in a target address (16, 32, 64) */
+  uint8_t ptr_alignment;        /* minimum alignment for pointers */
   uint32_t flags;               /* general and target-family specific flags */
 };
 
+/* Init modes */
+#define FFINI_STARTUP 0         /* all targets on early startp */
+#define FFINI_DESTFMT 1         /* init dest.target in linker_init() only */
+#define FFINI_RESOLVE 2         /* dest.target at the end of linker_resolve() */
 /* Return codes from identify() */
 #define ID_IGNORE (-1)          /* ignore file - e.g. an empty archive */
 #define ID_UNKNOWN 0            /* unknown file format */
@@ -672,6 +710,8 @@ struct FFFuncs {                /* file format specific functions and data */
                                 /* inter-DLL ones. */
 #define FFF_SECTOUT 16          /* Target allows to create a new file for */
                                 /* each section. */
+#define FFF_NOFILE 32           /* Target creates output files itself */
+
 
 /* List of artificially generated pointers or long words, which are */
 /* sorted by section-name, list-name and priority. */
@@ -755,6 +795,7 @@ extern void fwrite16be(FILE *,uint16_t);
 extern void fwrite32le(FILE *,uint32_t);
 extern void fwrite16le(FILE *,uint16_t);
 extern void fwrite8(FILE *,uint8_t);
+extern void fwritetaddr(struct GlobalVars *,FILE *,lword);
 extern void fwrite_align(FILE *,uint32_t,uint32_t);
 extern void fwritegap(FILE *,long);
 extern unsigned long elf_hash(const char *);
@@ -764,7 +805,7 @@ extern int shiftcnt(uint32_t);
 extern int lshiftcnt(lword);
 extern int highest_bit_set(lword);
 extern lword sign_extend(lword,int);
-void add_symnames(struct SymNames **,const char *);
+void add_symnames(struct SymNames **,const char *,lword);
 #endif
 #define listempty(x) ((x)->first->next==NULL)
 #define makemask(x) ((lword)(1LL<<(x))-1)
@@ -793,7 +834,7 @@ extern void linker_write(struct GlobalVars *);
 extern void linker_cleanup(struct GlobalVars *);
 extern const char *getobjname(struct ObjectUnit *);
 extern void print_function_name(struct Section *,unsigned long);
-extern void print_symbol(FILE *,struct Symbol *);
+extern void print_symbol(struct GlobalVars *,FILE *,struct Symbol *);
 extern bool trace_sym_access(struct GlobalVars *,const char *);
 #endif
 
@@ -824,7 +865,7 @@ extern const char r13init_name[];
 extern const char noname[];
 extern bool check_protection(struct GlobalVars *,const char *);
 extern struct Symbol *findsymbol(struct GlobalVars *,struct Section *,
-                                 const char *);
+                                 const char *,uint32_t);
 extern void hide_shlib_symbols(struct GlobalVars *);
 extern struct Symbol *addsymbol(struct GlobalVars *,struct Section *,
                                 const char *,const char *,lword,
@@ -841,6 +882,8 @@ extern void fixlnksymbols(struct GlobalVars *,struct LinkedSection *);
 extern struct Symbol *find_any_symbol(struct GlobalVars *,
                                       struct Section *,const char *);
 extern void reenter_global_objsyms(struct GlobalVars *,struct ObjectUnit *);
+extern struct Section *getinpsecoffs(struct LinkedSection *,unsigned long,
+                                     unsigned long *);
 extern struct RelocInsert *initRelocInsert(struct RelocInsert *,
                                            uint16_t,uint16_t,lword);
 extern struct Reloc *newreloc(struct GlobalVars *,struct Section *,
@@ -895,13 +938,16 @@ extern void text_data_bss_gaps(struct LinkedSection **);
 extern bool discard_symbol(struct GlobalVars *,struct Symbol *);
 extern lword entry_address(struct GlobalVars *gv);
 extern struct Section *entry_section(struct GlobalVars *);
-extern struct Symbol *bss_entry(struct ObjectUnit *,const char *,
-                                struct Symbol *);
+extern struct Symbol *bss_entry(struct GlobalVars *,struct ObjectUnit *,
+                                const char *,struct Symbol *);
 extern struct SecAttrOvr *addsecattrovr(struct GlobalVars *,char *,uint32_t);
 extern struct SecAttrOvr *getsecattrovr(struct GlobalVars *,const char *,
                                         uint32_t);
+extern void addsecrename(const char *,const char *);
+extern struct SecRename *getsecrename(void);
 extern void trim_sections(struct GlobalVars *);
 extern void untrim_sections(struct GlobalVars *);
+extern struct LinkedSection *load_next_section(struct GlobalVars *);
 #endif
 
 /* dir.c */
@@ -940,6 +986,7 @@ extern bool patternlist_match(char **,const char *);
 #ifndef EXPR_C
 extern void skip(void);
 extern char getchr(void);
+extern int testchr(char);
 extern void skipblock(int,char,char);
 extern void back(int);
 extern char *gettxtptr(void);
@@ -969,6 +1016,13 @@ extern struct FFFuncs fff_ataritos;
 #ifndef T_XFILE_C
 #ifdef XFILE
 extern struct FFFuncs fff_xfile;
+#endif
+#endif
+
+/* t_os9.c */
+#ifndef T_OS9_C
+#ifdef OS_9
+extern struct FFFuncs fff_os9_6809;
 #endif
 #endif
 
@@ -1076,11 +1130,27 @@ extern struct FFFuncs fff_rawbin2;
 #if defined(AMSDOS)
 extern struct FFFuncs fff_amsdos;
 #endif
+#if defined(APPLEBIN)
+extern struct FFFuncs fff_applebin;
+#endif
+#if defined(ATARICOM)
+extern struct FFFuncs fff_ataricom;
+#endif
 #if defined(CBMPRG)
 extern struct FFFuncs fff_cbmprg;
+extern struct FFFuncs fff_cbmreu;
+#endif
+#if defined(COCOML)
+extern struct FFFuncs fff_cocoml;
+#endif
+#if defined(DRAGONBIN)
+extern struct FFFuncs fff_dragonbin;
 #endif
 #if defined(JAGSRV)
 extern struct FFFuncs fff_jagsrv;
+#endif
+#if defined(BBC)
+extern struct FFFuncs fff_bbc;
 #endif
 #if defined(SREC19)
 extern struct FFFuncs fff_srec19;

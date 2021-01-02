@@ -592,8 +592,6 @@ struct Symbol *aout_lnksym(struct GlobalVars *gv,struct Section *sec,
 void aout_setlnksym(struct GlobalVars *gv,struct Symbol *xdef)
 /* Initialize common a.out linker symbol structure during resolve_xref() */
 {
-  struct FFFuncs *tf = fff[gv->dest_format];
-
   if (xdef->flags & SYMF_LNKSYM) {
     switch (xdef->extra) {
       case GOTSYM:
@@ -782,9 +780,6 @@ static int aout_sectindex(struct LinkedSection **sections,
 
 void aout_initwrite(struct GlobalVars *gv,struct LinkedSection **sections)
 {
-  static const char *fn = "aout_initwrite(): ";
-  struct LinkedSection *ls;
-
   initlist(&aoutstrlist.l);
   aoutstrlist.hashtab = alloczero(STRHTABSIZE*sizeof(struct StrTabNode *));
   aoutstrlist.nextoffset = 4;  /* first string is always at offset 4 */
@@ -1310,7 +1305,8 @@ static uint32_t aoutstd_getrinfo(struct GlobalVars *gv,struct Reloc *rel,
     else {
       /* unsupported relocation type */
       error(32,fff[gv->dest_format]->tname,reloc_name[rel->rtype],
-            (int)ri->bpos,(int)ri->bsiz,ri->mask,sname,rel->offset);
+            (int)ri->bpos,(int)ri->bsiz,(unsigned long long)ri->mask,
+            sname,rel->offset);
     }
   }
 

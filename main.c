@@ -1,8 +1,8 @@
-/* $VER: vlink main.c V0.16b (29.12.17)
+/* $VER: vlink main.c V0.16g (05.10.20)
  *
  * This file is part of vlink, a portable linker for multiple
  * object formats.
- * Copyright (c) 1997-2017  Frank Wille
+ * Copyright (c) 1997-2020  Frank Wille
  */
 
 
@@ -13,7 +13,7 @@ struct GlobalVars gvars;
 
 
 
-static char *get_option_arg(int argc,char *argv[],int *i)
+static const char *get_option_arg(int argc,const char *argv[],int *i)
 /* get pointer to the string, which either directly follows the option
    character or is stored in the next argument */
 {
@@ -32,7 +32,7 @@ static char *get_option_arg(int argc,char *argv[],int *i)
 }
 
 
-static char *get_arg(int argc,char *argv[],int *i)
+static const char *get_arg(int argc,const char *argv[],int *i)
 {
   if ((*i+1)<argc && *argv[*i+1]!='-')
     return argv[++*i];
@@ -41,12 +41,12 @@ static char *get_arg(int argc,char *argv[],int *i)
 }
 
 
-static lword get_assign_arg(int argc,char *argv[],int *i,
+static lword get_assign_arg(int argc,const char *argv[],int *i,
                             char *name,size_t len)
 {
-  char *p = get_arg(argc,argv,i);
+  const char *p = get_arg(argc,argv,i);
   char *n = name;
-  lword val;
+  long long val;
 
   while (--len && *p!='\0' && *p!='=')
     *n++ = *p++;
@@ -63,17 +63,18 @@ static lword get_assign_arg(int argc,char *argv[],int *i,
     error(130,argv[*i-1]);  /* bad assignment */
     return 0;  /* not reached */
   }
-  return val;
+  return (lword)val;
 }
 
 
-static void  ReadListFile(struct GlobalVars *gv,char *name,uint16_t flags)
+static void ReadListFile(struct GlobalVars *gv,const char *name,uint16_t flags)
 /* read a file, which contains a list of object file names */
 {
-  FILE *f;
+  struct SecRename *renames = getsecrename();
   struct InputFile *ifn;
-  int c;
   char buf[256],*n=NULL;
+  FILE *f;
+  int c;
 
   if (f = fopen(name,"r")) {
     do {
@@ -106,6 +107,7 @@ static void  ReadListFile(struct GlobalVars *gv,char *name,uint16_t flags)
         ifn->name = allocstring(buf);
         ifn->lib = FALSE;
         ifn->flags = flags;
+        ifn->renames = renames;
         addtail(&gv->inputlist,&ifn->n);
         n = NULL;
       }
@@ -118,7 +120,7 @@ static void  ReadListFile(struct GlobalVars *gv,char *name,uint16_t flags)
 }
 
 
-static uint16_t chk_flags(char *s)
+static uint16_t chk_flags(const char *s)
 /* check for input-file flags */
 {
   if (!strcmp(s+5,"deluscore"))
@@ -138,17 +140,79 @@ static int flavours_cmp(const void *f1,const void *f2)
 }
 
 
+static int tos_options(struct GlobalVars *gv,int argc,const char *argv[],int i)
+{
+  /* -tos-options for targets ataritos and aoutmint */
+  if (!strcmp(&argv[i][5],"flags")) {
+    long fl;
+
+    sscanf(get_arg(argc,argv,&i),"%li",&fl);
+    gv->tosflags = fl;
+  }
+  else if (!strcmp(&argv[i][5],"fastload"))
+    gv->tosflags |= 1;
+  else if (!strcmp(&argv[i][5],"fastram"))
+    gv->tosflags |= 2;
+  else if (!strcmp(&argv[i][5],"fastalloc"))
+    gv->tosflags |= 4;
+  else if (!strcmp(&argv[i][5],"private"))
+    gv->tosflags &= ~0x30;
+  else if (!strcmp(&argv[i][5],"global"))
+    gv->tosflags |= 0x10;
+  else if (!strcmp(&argv[i][5],"super"))
+    gv->tosflags |= 0x20;
+  else if (!strcmp(&argv[i][5],"readable"))
+    gv->tosflags |= 0x30;
+  else if (!strcmp(&argv[i][5],"textbased"))
+    gv->textbasedsyms = 1;
+  else
+    error(2,argv[i]);  /* unrecognized option */
+  return i;
+}
+
+
+static int os9_options(struct GlobalVars *gv,int argc,const char *argv[],int i)
+{
+  /* OS-9 specific options */
+  if (!strncmp(&argv[i][5],"mem=",4)) {
+    int last = strlen(argv[i]) - 1;
+    long mem;
+
+    sscanf(&argv[i][9],"%li",&mem);
+    if (argv[i][last]=='k' || argv[i][last]=='K')
+      mem <<= 10;  /* value is in KBytes instead of Bytes */
+    gv->os9mem = mem>256 ? mem : 256;
+  }
+  else if (!strncmp(&argv[i][5],"name=",5)) {
+    gv->os9name = &argv[i][10];
+  }
+  else if (!strcmp(&argv[i][5],"ns")) {
+    gv->os9noshare = TRUE;
+  }
+  else if (!strncmp(&argv[i][5],"rev=",4)) {
+    long rev;
+
+    sscanf(&argv[i][9],"%li",&rev);
+    if (rev<0 || rev>15)
+      error(130,argv[i]);  /* bad assignment */
+    else
+      gv->os9rev = rev;
+  }
+  return i;
+}
+
+
 void cleanup(struct GlobalVars *gv)
 {
   exit(gv->returncode);
 }
 
 
-int main(int argc,char *argv[])
+int main(int argc,const char *argv[])
 {
   struct GlobalVars *gv = &gvars;
   int i,j;
-  char *buf;
+  const char *buf;
   struct LibPath *libp;
   struct InputFile *ifn;
   bool stdlib = TRUE;
@@ -167,7 +231,7 @@ int main(int argc,char *argv[])
   /* initialize targets */
   for (j=0; fff[j]; j++) {
     if (fff[j]->init)
-      fff[j]->init(gv);
+      fff[j]->init(gv,FFINI_STARTUP);  /* startup-init for all targets */
   }
 #ifdef DEFTARGET
   for (j=0; fff[j]; j++) {
@@ -257,11 +321,11 @@ int main(int argc,char *argv[])
             gv->fix_unnamed = TRUE;  /* assign a name to unnamed sections */
           }
           else {  /* set a flavour */
-            char *name,**fl;
+            const char *name,**fl;
 
             if (name = get_option_arg(argc,argv,&i)) {
               if (fl = gv->flavours.flavours) {
-                char **tmp = alloc((gv->flavours.n_flavours+1)*sizeof(char *));
+                const char **tmp = alloc((gv->flavours.n_flavours+1)*sizeof(char *));
 
                 memcpy(tmp,fl,gv->flavours.n_flavours*sizeof(char *));
                 free(fl);
@@ -325,12 +389,18 @@ int main(int argc,char *argv[])
             ifn->so_ver = so_version;
             so_version = 0;
             ifn->flags = flags;
+            ifn->renames = getsecrename();
             addtail(&gv->inputlist,&ifn->n);
           }
           break;
 
         case 'm':
-          if (!strcmp(&argv[i][2],"inalign")) {
+          if (!argv[i][2]) {
+            gv->masked_symbols = '.';
+            if (gv->symmasks == NULL)
+              gv->symmasks = alloc_hashtable(SMASKHTABSIZE);
+          }
+          else if (!strcmp(&argv[i][2],"inalign")) {
             long a;
 
             sscanf(get_arg(argc,argv,&i),"%li",&a);
@@ -340,6 +410,8 @@ int main(int argc,char *argv[])
             gv->auto_merge = TRUE;
           else if (!strcmp(&argv[i][2],"type"))
             gv->merge_same_type = TRUE;
+          else if (!strcmp(&argv[i][2],"all"))
+            gv->merge_all = TRUE;
           else if (!strcmp(&argv[i][2],"ultibase"))
             gv->multibase = TRUE;
           else
@@ -363,6 +435,8 @@ int main(int argc,char *argv[])
           }
           else if (!strcmp(&argv[i][2],"sec"))
             gv->output_sections = TRUE;  /* output each section as a file */
+          else if (!strncmp(&argv[i][2],"s9-",3))
+            i = os9_options(gv,argc,argv,i);
           else
             gv->dest_name = get_option_arg(argc,argv,&i);
           break;
@@ -430,33 +504,8 @@ int main(int argc,char *argv[])
         case 't':  /* trace file accesses */
           if (!strcmp(&argv[i][2],"extbaserel"))
             gv->textbaserel = TRUE;
-          else if (!strncmp(&argv[i][2],"os-",3)) {
-            /* -tos-options for targets ataritos and aoutmint */
-            if (!strcmp(&argv[i][5],"flags")) {
-              long fl;
-
-              sscanf(get_arg(argc,argv,&i),"%li",&fl);
-              gv->tosflags = fl;
-            }
-            else if (!strcmp(&argv[i][5],"fastload"))
-              gv->tosflags |= 1;
-            else if (!strcmp(&argv[i][5],"fastram"))
-              gv->tosflags |= 2;
-            else if (!strcmp(&argv[i][5],"fastalloc"))
-              gv->tosflags |= 4;
-            else if (!strcmp(&argv[i][5],"private"))
-              gv->tosflags &= ~0x30;
-            else if (!strcmp(&argv[i][5],"global"))
-              gv->tosflags |= 0x10;
-            else if (!strcmp(&argv[i][5],"super"))
-              gv->tosflags |= 0x20;
-            else if (!strcmp(&argv[i][5],"readable"))
-              gv->tosflags |= 0x30;
-            else if (!strcmp(&argv[i][5],"textbased"))
-              gv->textbasedsyms = 1;
-            else
-              error(2,argv[i]);  /* unrecognized option */
-          }
+          else if (!strncmp(&argv[i][2],"os-",3))
+            i = tos_options(gv,argc,argv,i);
           else if (!argv[i][2])
             gv->trace_file = stderr;
           else
@@ -465,21 +514,28 @@ int main(int argc,char *argv[])
 
         case 'u':  /* mark symbol as undefined */
           if (buf = get_option_arg(argc,argv,&i))
-            add_symnames(&gv->undef_syms,buf);
+            add_symnames(&gv->undef_syms,buf,0);
           break;
 
         case 'v':  /* show version and target info */
-          show_version();
-          printf("Standard library path: "
+          if (!strcmp(&argv[i][2],"icelabels") &&
+              (buf = get_arg(argc,argv,&i)) != NULL) {
+            gv->vice_file = fopen(buf,"w");
+          }
+          else {
+            show_version();
+            printf("Standard library path: "
 #ifdef LIBPATH
-                 LIBPATH
+                   LIBPATH
 #endif
-                 "\nDefault target: %s\n"
-                 "Supported targets:",fff[gv->dest_format]->tname);
-          for (j=0; fff[j]; j++)
-            printf(" %s",fff[j]->tname);
-          printf("\n");
-          exit(EXIT_SUCCESS);
+                   "\nDefault target: %s\n"
+                   "Supported targets:",fff[gv->dest_format]->tname);
+            for (j=0; fff[j]; j++)
+              printf(" %s",fff[j]->tname);
+            printf("\n");
+            exit(EXIT_SUCCESS);
+          }
+          break;
 
         case 'w':  /* suppress warnings */
           gv->dontwarn = TRUE;
@@ -527,7 +583,10 @@ int main(int argc,char *argv[])
 
         case 'C':  /* select con-/destructor type */
           if (buf = get_option_arg(argc,argv,&i)) {
-            if (!strcmp(buf,"gnu")) {
+            if (!strcmp(buf,"rel")) {
+              gv->pcrel_ctors = TRUE;
+            }
+            else if (!strcmp(buf,"gnu")) {
               gv->collect_ctors_type = CCDT_GNU;
             }
             else if (!strcmp(buf,"vbcc")) {
@@ -541,6 +600,24 @@ int main(int argc,char *argv[])
             }
             else  /* @@@ print error message */
               gv->collect_ctors_type = CCDT_NONE;
+          }
+          break;
+
+        case 'D':  /* define a linker symbol */
+          if (buf = get_option_arg(argc,argv,&i)) {
+            long long v = 1;
+            char *p;
+
+            if (p = strchr(buf,'=')) {
+              size_t len = p - buf;
+              sscanf(p+1,"%lli",&v);
+              p = alloc(len + 1);
+              strncpy(p,buf,len);
+              p[len] = '\0';
+            }
+            else
+              p = (char *)buf;
+            add_symnames(&gv->lnk_syms,p,(lword)v);
           }
           break;
 
@@ -572,12 +649,22 @@ int main(int argc,char *argv[])
           break;
 
         case 'M':  /* mapping output */
-          gv->map_file = stdout;
+          if (!argv[i][2] || (gv->map_file = fopen(&argv[i][2],"w"))==NULL)
+            gv->map_file = stdout;
+          break;
+
+        case 'N':  /* rename input sections */
+          if (i+2 < argc) {
+            addsecrename(argv[i+1],argv[i+2]);
+            i += 2;
+          }
+          else
+            error(5,argv[i][1]);
           break;
 
         case 'P':  /* protect symbol against stripping */
           if (buf = get_option_arg(argc,argv,&i))
-            add_symnames(&gv->prot_syms,buf);
+            add_symnames(&gv->prot_syms,buf,0);
           break;
 
         case 'R':  /* use short form for relocations */
@@ -599,8 +686,12 @@ int main(int argc,char *argv[])
 
         case 'T':  /* read linker script file or set text address */
           if (!strcmp(&argv[i][2],"text")) {
-            if (i+1 < argc)
-              sscanf(argv[++i],"%lli",&gv->start_addr);
+            if (i+1 < argc) {
+              long long tmp;
+
+              sscanf(argv[++i],"%lli",&tmp);
+              gv->start_addr = tmp;
+            }
             else
               error(5,'T');  /* option requires argument */
           }
@@ -636,6 +727,7 @@ int main(int argc,char *argv[])
       ifn->name = argv[i];
       ifn->lib = FALSE;
       ifn->flags = flags;
+      ifn->renames = getsecrename();
       addtail(&gv->inputlist,&ifn->n);
     }
   }

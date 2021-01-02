@@ -1,13 +1,13 @@
-/* $VER: vlink version.c V0.16c (31.01.19)
+/* $VER: vlink version.c V0.16g (05.10.20)
  *
  * This file is part of vlink, a portable linker for multiple
  * object formats.
- * Copyright (c) 1997-2019  Frank Wille
+ * Copyright (c) 1997-2020  Frank Wille
  */
 
 
 /* version/revision */
-#define VERSION "0.16c"
+#define VERSION "0.16g"
 
 #define VERSION_C
 #include "vlink.h"
@@ -21,7 +21,7 @@ static const char *_ver = "$VER: " PNAME " " VERSION " " __AMIGADATE__ "\r\n";
 
 void show_version(void)
 {
-  printf(PNAME " V" VERSION " (c)1997-2019 by Frank Wille\n"
+  printf(PNAME " V" VERSION " (c)1997-2020 by Frank Wille\n"
          "build date: " __DATE__ ", " __TIME__ "\n\n");
 }
 
@@ -30,8 +30,8 @@ void show_usage(void)
 {
   show_version();
 
-  printf("Usage: " PNAME " [-dhknqrstvwxMRSXZ] [-B linkmode] [-b targetname] "
-         "[-baseoff offset] [-C constructor-type] "
+  printf("Usage: " PNAME " [-dhkmnqrstvwxMRSXZ] [-B linkmode] [-b targetname] "
+         "[-baseoff offset] [-C constructor-type] [-Crel] "
 #if 0 /* not implemented */
          "[-D symbol[=value]] "
 #endif
@@ -40,12 +40,13 @@ void show_usage(void)
          "[-gc-all] [-gc-empty] "
          "[-hunkattr secname=value] [-interp path] "
          "[-L library-search-path] [-l library-specifier] [-minalign value] "
-         "[-mrel] [-mtype] [-multibase] [-nostdlib] "
-         "[-o filename] [-osec] [-P symbol] "
+         "[-mrel] [-mtype] [-mall] [-multibase] [-nostdlib] "
+         "[-N old new] [-o filename] [-osec] "
+         "[-os9-mem/name/rev] [-P symbol] "
          "[-rpath path] [-sc] [-sd] [-shared] [-soname name] [-static] "
          "[-T filename] [-Ttext addr] [-textbaserel] "
          "[-tos-flags/fastload/fastram/private/global/super/readable] "
-         "[-u symbol] "
+         "[-u symbol] [-vicelabels filename]"
          "[-V version] [-y symbol] "
          "input-files...\n\nOptions:\n"
 
@@ -73,14 +74,18 @@ void show_usage(void)
          "-EB/-EL           set big-endian/little-endian mode\n"
          "-V<version>       minimum version of shared object\n"
          "-C<constr.type>   Set type of con-/destructors to scan for\n"
+         "-Crel             Use relative con-/destructor function references\n"
          "-minalign <val>   Minimal section alignment (default 0)\n"
          "-baseoff <offset> offset for base relative relocations\n"
+         "-N <old> <new>    Rename input sections\n"
          "-fixunnamed       unnamed sections are named according to their type\n"
          "-nostdlib         don't use default search path\n"
          "-multibase        don't auto-merge base-relative accessed sections\n"
          "-textbaserel      allow base-relative access on code sections\n"
+         "-os9-...=<val>    OS-9 options, refer to documentation\n"
          "-tos-flags <val>  sets TOS flags, refer to documentation\n"
          "-hunkattr <s>=<v> overwrite input section's memory attributes\n"
+         "-vicelabels       generate label mapping for the VICE debugger\n"
          "-shared           generate shared object\n"
          "-soname <name>    set real name of shared object\n"
          "-export-dynamic   export all global symbols as dynamic symbols\n"
@@ -95,6 +100,8 @@ void show_usage(void)
          "-sd               merge all data and bss sections\n"
          "-mrel             merge sections with pc-relative references\n"
          "-mtype            merge all sections with the same type\n"
+         "-mall             merge all sections to a single output section\n"
+         "-m                enable feature-mask in symbol names\n"
          "-M                print segment mappings and symbol values\n"
          "-k                keep original section order\n"
          "-n                no page alignment\n"

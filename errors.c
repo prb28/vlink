@@ -1,8 +1,8 @@
-/* $VER: vlink errors.c V0.15e (23.03.17)
+/* $VER: vlink errors.c V0.16g (29.12.20)
  *
  * This file is part of vlink, a portable linker for multiple
  * object formats.
- * Copyright (c) 1997-2017  Frank Wille
+ * Copyright (c) 1997-2020  Frank Wille
  */
 
 
@@ -63,8 +63,8 @@ static struct {
     "mask=%llx) at %s+0x%x",EF_ERROR,
   "Target %s: Can't reproduce symbol %s, which is a %s%s%s",EF_ERROR,
   "Option '%s' requires an argument",EF_FATAL,
-  "%s (%s+0x%x): Calculated value 0x%llx doesn't fit into relocation "
-    "type %s (offset=%d, size=%d, mask=0x%llx)",EF_ERROR,           /* 35 */
+  "%s (%s+0x%x): from %s (%s+0x%x): Calculated value 0x%llx doesn't fit into "
+    "relocation type %s (offset=%d, size=%d, mask=0x%llx)",EF_ERROR,/* 35 */
   "%s (%s+0x%x): Base relative reference to relocatable symbol "    /* !!! */
     "%s=0x%llx + 0x%llx (value to write: 0x%llx) doesn't fit into %d bits",EF_ERROR,
   "%s: Malformatted archive member %s",EF_FATAL,
@@ -109,7 +109,7 @@ static struct {
   "%s line %d: GNU command <%s> ignored",EF_WARNING,
   "%s line %d: Unknown memory region <%s>",EF_ERROR,                /* 70 */
   "%s line %d: Multiple constructor types in output file",EF_ERROR,
-  "UNUSED %s line %d: Syntax error",EF_ERROR,
+  "UNUSED! %s line %d: Unknown keyword <%s>",EF_ERROR,
   "%s line %d: Assertion failed: %s",EF_FATAL,
   "%s line %d: SECTIONS block defined twice",EF_ERROR,
   "%s line %d: Segment %s is closed and can't be reused",EF_ERROR,  /* 75 */
@@ -119,7 +119,7 @@ static struct {
   "%s line %d: Undefined section: <%s>",EF_ERROR,
   "%s line %d: Section %s was assigned to more than one PT_LOAD "   /* 80 */
     "segment",EF_ERROR,
-  "UNUSED First ELF segment (%s) doesn't contain first section (%s)",EF_FATAL,
+  "Multiple use of section <%s> in linker script",EF_FATAL,
   "Intermediate uninitialized sections in ELF segment <%s> (first=<%s>, "
     "last=<%s>) will be turned into initialized",EF_WARNING,
   "Section <%s> (0x%llx-0x%llx) conflicts with ELF segment <%s> "
@@ -191,6 +191,10 @@ static struct {
   "Unsupported absolute relocation (offs=%lld pos=%d siz=%d msk=0x%llx) "
     "in resident data section",EF_ERROR,
   "%s (%s+0x%x): Absolute reference to resident data section (%s)",EF_WARNING,
+  "%s line %d: Undefined memory region: <%s>",EF_ERROR,            /* 135 */
+  "Executable section <%s> in data segment not allowed",EF_ERROR,
+  "Not enough space for the module header (%u of %u)",EF_ERROR,
+  "Target %s: multiple %s sections not allowed:<%s> and <%s>",EF_ERROR,
 };
 
 

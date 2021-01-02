@@ -46,7 +46,7 @@ struct FFFuncs fff_ataritos = {
   0,
   RTAB_STANDARD,RTAB_STANDARD,
   _BIG_ENDIAN_,
-  32,
+  32,1,
   FFF_BASEINCR
 };
 
@@ -103,8 +103,6 @@ static int tos_initwrite(struct GlobalVars *gv,
    will become .text, .data and .bss,
    then count the number of symbol definitions and references */
 {
-  static const char *fn = "tos_initwrite(): ";
-  struct LinkedSection *ls;
   struct Symbol *sym;
   struct Reloc *xref;
   int i,cnt;
@@ -266,7 +264,7 @@ void tos_writerelocs(struct GlobalVars *gv,FILE *f,
           if (rel->rtype!=R_ABS || ri->bpos!=0 || ri->bsiz!=32) {
             if (rel->rtype==R_ABS && (ri->bpos!=0 || ri->bsiz!=32))
               error(32,fff_ataritos.tname,reloc_name[rel->rtype],
-                    (int)ri->bpos,(int)ri->bsiz,ri->mask,
+                    (int)ri->bpos,(int)ri->bsiz,(unsigned long long)ri->mask,
                     sections[i]->name,rel->offset);
             continue;
           }

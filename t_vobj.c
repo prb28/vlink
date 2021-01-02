@@ -1,8 +1,8 @@
-/* $VER: vlink t_vobj.c V0.15b (08.07.16)
+/* $VER: vlink t_vobj.c V0.16e (10.06.20)
  *
  * This file is part of vlink, a portable linker for multiple
  * object formats.
- * Copyright (c) 1997-2016  Frank Wille
+ * Copyright (c) 1997-2020 Frank Wille
  */
 
 #include "config.h"
@@ -99,7 +99,8 @@ struct FFFuncs fff_vobj_le = {
   0,
   RTAB_UNDEF,0,
   _LITTLE_ENDIAN_,
-  32
+  0,  /* defined by VOBJ bytespertaddr*8 */
+  0   /* irrelevant - no output format */
 };
 
 struct FFFuncs fff_vobj_be = {
@@ -126,7 +127,8 @@ struct FFFuncs fff_vobj_be = {
   0,
   RTAB_UNDEF,0,
   _BIG_ENDIAN_,
-  32
+  0,  /* defined by VOBJ bytespertaddr*8 */
+  0   /* irrelevant - no output format */
 };
 
 
@@ -302,20 +304,24 @@ static void read_section(struct GlobalVars *gv,struct ObjectUnit *u,
     if (type>R_NONE && type<=LAST_STANDARD_RELOC &&
         offs>=0 && bsiz<=(sizeof(lword)<<3) &&
         sym_idx>=0 && sym_idx<nsyms) {
-      if (vsyms[sym_idx].type == LABSYM) {
+      if (vsyms[sym_idx].flags & WEAK) {
+        xrefname = vsyms[sym_idx].name;
+        index = 0;
+        flags |= RELF_WEAK;
+      }
+      else if (vsyms[sym_idx].type == LABSYM) {
         xrefname = NULL;
         index = vsyms[sym_idx].sec;
       }
       else if (vsyms[sym_idx].type == IMPORT) {
         xrefname = vsyms[sym_idx].name;
-        if (vsyms[sym_idx].flags & WEAK)
-          flags |= RELF_WEAK;  /* undefined weak symbol */
         index = 0;
       }
       else {
         /* VOBJ relocation not supported */
         error(115,getobjname(u),fff[u->lnkfile->format]->tname,
-              (int)type,(lword)offs,(int)bpos,(int)bsiz,(lword)mask,
+              (int)type,(unsigned long long)offs,
+              (int)bpos,(int)bsiz,(unsigned long long)mask,
               vsyms[sym_idx].name,(int)vsyms[sym_idx].type);
       }
 
@@ -339,7 +345,8 @@ static void read_section(struct GlobalVars *gv,struct ObjectUnit *u,
     else if (type != R_NONE) {
       /* VOBJ relocation not supported */
       error(115,getobjname(u),fff[u->lnkfile->format]->tname,
-            (int)type,(lword)offs,(int)bpos,(int)bsiz,(lword)mask,
+            (int)type,(unsigned long long)offs,
+            (int)bpos,(int)bsiz,(unsigned long long)mask,
             (sym_idx>=0&&sym_idx<nsyms) ? vsyms[sym_idx].name : "?",
             (sym_idx>=0&&sym_idx<nsyms) ? (int)vsyms[sym_idx].type : 0);
     }
@@ -367,6 +374,8 @@ static void vobj_read(struct GlobalVars *gv,struct LinkFile *lf,uint8_t *data)
     /* n bytes per target-address are not supported */
     error(114,lf->pathname,fff[lf->format]->tname,bpt);
   }
+  if (bpt * bpb > (int)gv->bits_per_taddr)
+    gv->bits_per_taddr = bpt * bpb;  /* set bits per taddr from this VOBJ */
   skip_string();  /* skip cpu-string */
 
   u = create_objunit(gv,lf,lf->objname);

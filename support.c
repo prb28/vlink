@@ -1,8 +1,8 @@
-/* $VER: vlink support.c V0.15b (27.08.16)
+/* $VER: vlink support.c V0.16g (17.11.20)
  *
  * This file is part of vlink, a portable linker for multiple
  * object formats.
- * Copyright (c) 1997-2016  Frank Wille
+ * Copyright (c) 1997-2020  Frank Wille
  */
 
 
@@ -25,6 +25,9 @@ void *alloc(size_t size)
     size = 1;
   if (!(p = malloc(size)))
     error(1);  /* out of memory */
+#ifdef DEBUG
+  memset(p,0x55,size);
+#endif
   return p;
 }
 
@@ -160,7 +163,7 @@ static size_t filesize(FILE *fp,const char *name)
         if (fseek(fp,oldpos,SEEK_SET) >= 0)
           return (size_t)size;
   fclose(fp);
-  error(5,name);  /* read error - doesn't return */
+  error(7,name);  /* read error - doesn't return */
   return 0;
 }
 
@@ -199,7 +202,7 @@ const char *base_name(const char *s)
 
   while (l--) {
     c = s[l];
-    if (c== '/' || c==':')
+    if (c=='/' || c=='\\' || c==':')
       return &s[l+1];
   }
   return s;
@@ -452,9 +455,9 @@ void write64(bool be,void *p,uint64_t d)
 
 int writetaddr(struct GlobalVars *gv,void *p,lword d)
 {
-  bool be = fff[gv->dest_format]->endianess == _BIG_ENDIAN_;
+  bool be = gv->endianess == _BIG_ENDIAN_;
 
-  switch (fff[gv->dest_format]->addr_bits) {
+  switch (gv->bits_per_taddr) {
     case 16:
       write16(be,p,(uint16_t)d);
       return 2;
@@ -466,7 +469,7 @@ int writetaddr(struct GlobalVars *gv,void *p,lword d)
       return 8;
     default:
       ierror("writetaddr(): target address has %d bits",
-             (int)fff[gv->dest_format]->addr_bits);
+             (int)gv->bits_per_taddr);
       break;
   }
   return 0;
@@ -703,6 +706,17 @@ void fwrite8(FILE *fp,uint8_t w)
 }
 
 
+void fwritetaddr(struct GlobalVars *gv,FILE *fp,lword d)
+/* write a target address to file */
+{
+  char buf[16];
+  size_t len;
+
+  if (len = (size_t)writetaddr(gv,buf,d))
+    fwritex(fp,buf,len);
+}
+
+
 void fwrite_align(FILE *fp,uint32_t a,uint32_t n)
 /* writes as many zero bytes as required for alignment a (a bits */
 /* must be zero) with current file offset n */
@@ -813,7 +827,7 @@ void memset16(struct GlobalVars *gv,void *start,uint16_t fill,long n)
     uint8_t *p;
     int i;
 
-    write16(fff[gv->dest_format]->endianess==_BIG_ENDIAN_,f,fill);
+    write16(1,f,fill);  /* pattern in big-endian */
     for (p=start,i=((unsigned long)start)&1; n; n--,i^=1)
       *p++ = f[i];
   }
@@ -830,7 +844,7 @@ lword sign_extend(lword v,int n)
 }
 
 
-void add_symnames(struct SymNames **snlist,const char *name)
+void add_symnames(struct SymNames **snlist,const char *name,lword val)
 /* add a new name to a SymNames list */
 {
   struct SymNames *new = alloc(sizeof(struct SymNames));
@@ -838,6 +852,7 @@ void add_symnames(struct SymNames **snlist,const char *name)
 
   new->next = NULL;
   new->name = name;
+  new->value = val;
   if (sn = *snlist) {
     while (sn->next)
       sn = sn->next;

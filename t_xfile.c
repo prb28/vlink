@@ -46,7 +46,7 @@ struct FFFuncs fff_xfile = {
   0,
   RTAB_STANDARD,RTAB_STANDARD,
   _BIG_ENDIAN_,
-  32,
+  32,1,
   FFF_BASEINCR
 };
 
@@ -198,7 +198,7 @@ static size_t xfile_writerelocs(struct GlobalVars *gv,FILE *f,
           if (rel->rtype!=R_ABS || ri->bpos!=0 || ri->bsiz!=32) {
             if (rel->rtype==R_ABS && (ri->bpos!=0 || ri->bsiz!=32))
               error(32,fff_xfile.tname,reloc_name[rel->rtype],
-                    (int)ri->bpos,(int)ri->bsiz,ri->mask,
+                    (int)ri->bpos,(int)ri->bsiz,(unsigned long long)ri->mask,
                     sections[i]->name,rel->offset);
             continue;
           }

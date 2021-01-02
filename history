@@ -10,10 +10,85 @@ vlink history
 (elf64x86):   changes are relevant for ELF64-x86_64 only
 (a.out):      general a.out changes
 (aoutmint):   changes are relevant for MiNT only
+(os9):        changes are relevant for OS-9 modules
 (vobj):       changes for VOBJ format
 (tos):        changes for the Atari TOS format
 (xfile):      changes for the Sharp X68000 XFile format
 
+
+- 0.16g (31.12.20)
+o New target file format bbc to generate .inf files for BBC Micro/Master.
+o Fixed symbol assignments refering to other symbols in linker scripts.
+o Optional symbol assignments can be done with =?. Such an assignment will
+  be silently ignored when the symbol already exists.
+o New option -D to define linker symbols on the command line.
+o ASCII output (S-Rec, ihex, etc.) is now done using the host systems
+  line endings.
+o When calculated relocation addends in raw binary formats are out of bounds,
+  also print the name and section-offset of the input file.
+o (os9) -os9-mem now specifies the memory to allocate in bytes instead
+  of pages.
+o (os9) Fixed header parity and CRC calculation.
+o (os9) Fixed write error when vlink was not compiled by gcc.
+o (rawbin) -q can be used with rawbin1 to append a relocation table.
+o (rawseg) -q (emit relocations) is now supported for any target address size.
+
+- 0.16f (28.09.20)
+o New target file format os9-6809 to generate OS-9 modules for 6809 systems.
+o OS9-specific options: -os9-mem, -os9-name, -os9-ns, -os9-rev.
+o New binary target file formats applebin (Apple DOS 3.3), ataricom (Atari
+  8-bit), cocoml (Tandy Color Computer) and dragonbin (Dragon DOS).
+o New option -m enables special treatment of a feature-mask suffix in
+  symbol names (global definitions and external references).
+o New option -Crel emits constructor/destructor function references which
+  are relative to their table position.
+o Added cbmreu target for C64 REU memory expansion.
+o New linker script functions ORIGIN() and LENGTH() for memory regions.
+o Included description of linker scripts in the documentation.
+o Fixed bug with AT(lma) attribute in linker script section definitions.
+o (elf) Fixed reference to defined weak-symbols again.
+o (ados/ehf) External small-data references may have a signed addend now,
+  while small-data relocs still use an unsigned section-offset.
+
+- 0.16e (07.07.20)
+o Changing the address within an output section in a linker script didn't
+  work correctly when the destination memory region (load-address) differs
+  from the relocation memory region (execution-address).
+o Data commands in linker scripts didn't work when there was nothing
+  else in the output section.
+o Fixed a segfault when a linker script moves the address counter backwards
+  inside an output section.
+o Fixed uninitialized pointer when loading input files via a linker-script
+  INPUT command.
+o New linker-script command: RESERVE(n) to reserve n bytes of memory and
+  fill it with the current FILL value.
+o FILL-pattern should always be written in big-endian.
+o Replaced FILL command by FILL8 and FILL16.
+o New option -mall to merge everything into a single output section.
+o Weak symbols must only be resolved in executables.
+o (rawbin) Motorola S-Records: Fixed start address in S8 and S9 trailer.
+o (vobj) Fixed reference to a defined weak symbol in an object.
+o (elf) Fixed reference to a defined weak symbol in an object.
+
+- 0.16d (18.04.20)
+o New option -N for renaming input sections.
+o New option -vicelabels to generate a label-address mapping for the
+  debugger from the VICE emulator.
+o -M option for generating map files accepts an optional output file name.
+o Map files prints all symbols per section sorted by value. The values
+  are printed on the first column now, using the target address size for
+  formatting.
+o Multiple lines for the same section in a linker script are not allowed.
+o Try to avoid "segment is closed" errors in linker scripts which define
+  and use memory regions, and no PHDR definitions.
+o Fixed output of trailing zero-bytes in all hex-formats, like S-Records,
+  IHex, SHex1.
+o (ados/ehf) Always generate short-reloc hunks, when requested by -Rshort.
+  Relocs with offsets > 0xffff will be written in a separate hunk.
+o (ados/ehf) HUNK_LIB parsing sometimes failed. Fixed.
+o (rawbin) Target cbmprg no longer automatically splits the output file,
+  when there are larger gaps between output sections.
+o (rawbin) Trailing S-record (S7, S8, S9) contains the entry address.
 
 - 0.16c (10.06.19)
 o New target file format XFile, for Sharp X68000 computers. At the moment
